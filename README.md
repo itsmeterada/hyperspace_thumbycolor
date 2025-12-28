@@ -67,7 +67,7 @@ Based on TinyCircuits Tiny Game Engine:
 ### Build Steps
 
 ```bash
-cd thumbycolor
+cd hyperspace_thumbycolor/
 mkdir build
 cd build
 cmake ..
