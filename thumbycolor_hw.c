@@ -143,21 +143,21 @@ static void gc9107_init_sequence(void) {
     gc9107_cmd_with_data(0xBB, (uint8_t[]){0x39}, 1);
     gc9107_cmd_with_data(0xC0, (uint8_t[]){0x2c}, 1);
     gc9107_cmd_with_data(0xC2, (uint8_t[]){0x01}, 1);
-    gc9107_cmd_with_data(0xC3, (uint8_t[]){0x17}, 1);
+    gc9107_cmd_with_data(0xC3, (uint8_t[]){0x20}, 1);  // VCOM increased for brighter display
     gc9107_cmd_with_data(0xC4, (uint8_t[]){0x20}, 1);
     gc9107_cmd_with_data(0xC6, (uint8_t[]){0x0f}, 1);  // Frame rate
     gc9107_cmd_with_data(0xAB, (uint8_t[]){0x0f}, 1);
 
     gc9107_cmd_with_data(0xD0, (uint8_t[]){0xA4, 0xA1}, 2);
 
-    // Positive voltage gamma control (from TinyCircuits)
+    // Positive voltage gamma control (adjusted for brighter output)
     gc9107_cmd_with_data(0xF0, (uint8_t[]){
-        0x45, 0x09, 0x08, 0x08, 0x26, 0x2A
+        0x3F, 0x0C, 0x0A, 0x0A, 0x22, 0x28
     }, 6);
 
-    // Negative voltage gamma control (from TinyCircuits)
+    // Negative voltage gamma control (adjusted for brighter output)
     gc9107_cmd_with_data(0xF1, (uint8_t[]){
-        0x43, 0x70, 0x72, 0x36, 0x37, 0x6F
+        0x3D, 0x68, 0x6A, 0x30, 0x32, 0x68
     }, 6);
 
     // Set display window to full screen
