@@ -2,6 +2,10 @@
 
 A port of Hyperspace to the ThumbyColor handheld console.
 
+## Screenshot
+
+![Screenshot](screenshot.jpg)
+
 ## Hardware
 
 - **MCU**: RP2350 (or RP2040 compatible)
