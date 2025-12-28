@@ -116,6 +116,13 @@ The GC9107 driver uses:
 - [ ] Audio support
 - [ ] Rumble feedback
 
+## Related Projects
+
+- [Hyperspace for PicoSystem](https://github.com/itsmeterada/picosystem_hyperspace) - Port for Pimoroni PicoSystem (RP2040, 240x240 display)
+- [Hyperspace SDL2](https://github.com/itsmeterada/hyperspace) - SDL2 port for desktop platforms (Windows, macOS, Linux)
+- [Hyperspace for GBA](https://github.com/itsmeterada/hyperspace_gba) - Port for GBA platforms
+ 
 ## License
 
 Based on the original PICO-8 game by J-Fry.
+
