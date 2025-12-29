@@ -12,7 +12,10 @@
 #include "hardware/pwm.h"
 #include "hardware/gpio.h"
 #include "hardware/adc.h"
+#include "hardware/timer.h"
+#include "hardware/irq.h"
 #include <string.h>
+#include <stdlib.h>
 
 // SPI instance
 #define SPI_PORT spi0
@@ -374,6 +377,369 @@ void thumbycolor_wait_vsync(void) {
 }
 
 // =============================================================================
+// Audio System (PICO-8 Compatible)
+// =============================================================================
+
+#define AUDIO_SAMPLE_RATE 22050
+#define AUDIO_PWM_WRAP    255
+#define AUDIO_NUM_CHANNELS 4
+
+// PICO-8 frequency table (C-0 to D#-5, 64 notes)
+// PICO-8 uses A4 = 440Hz
+static const uint16_t p8_freq_table[64] = {
+    65, 69, 73, 78, 82, 87, 92, 98,         // C-0 to G#-0
+    104, 110, 117, 123, 131, 139, 147, 156, // A-0 to G#-1
+    165, 175, 185, 196, 208, 220, 233, 247, // A-1 to G#-2
+    262, 277, 294, 311, 330, 349, 370, 392, // A-2 to G#-3
+    415, 440, 466, 494, 523, 554, 587, 622, // A-3 to G#-4
+    659, 698, 740, 784, 831, 880, 932, 988, // A-4 to G#-5
+    1047, 1109, 1175, 1245, 1319, 1397, 1480, 1568, // 48-55
+    1661, 1760, 1865, 1976, 2093, 2217, 2349, 2489  // 56-63
+};
+
+// PICO-8 SFX data for Hyperspace
+// Format: Speed(8), LoopStart(8), LoopEnd(8), followed by 32 notes
+// Each note: pitch(6), waveform(3), volume(3), effect(3) - packed
+
+typedef struct {
+    uint8_t speed;
+    uint8_t loop_start;
+    uint8_t loop_end;
+    uint8_t notes[32][4];  // pitch, waveform, volume, effect
+} P8SFX;
+
+// Hyperspace SFX definitions (extracted from PICO-8 cartridge)
+static const P8SFX hyperspace_sfx[] = {
+    // SFX 0: Laser fire (descending saw wave)
+    {1, 0, 13, {
+        {50, 2, 3, 0}, {51, 2, 3, 0}, {51, 2, 3, 0}, {49, 2, 1, 0},
+        {46, 2, 3, 0}, {41, 2, 3, 0}, {36, 2, 4, 0}, {34, 2, 3, 0},
+        {32, 2, 3, 0}, {29, 2, 3, 0}, {28, 2, 3, 0}, {28, 2, 2, 0},
+        {28, 2, 1, 0}, {28, 2, 0, 0}, {28, 0, 0, 0}, {0, 0, 0, 0},
+        {50, 4, 0, 0}, {52, 4, 0, 0}, {52, 4, 0, 0}, {49, 4, 0, 0},
+        {46, 4, 0, 0}, {41, 4, 0, 0}, {36, 4, 0, 0}, {34, 4, 0, 0},
+        {32, 4, 0, 0}, {29, 4, 0, 0}, {28, 4, 0, 0}, {28, 4, 0, 0},
+        {28, 4, 0, 0}, {1, 4, 0, 0}, {1, 4, 0, 0}, {1, 4, 0, 0}
+    }},
+    // SFX 1: Player damage / barrel roll
+    {5, 0, 0, {
+        {36, 6, 7, 0}, {36, 6, 7, 0}, {39, 6, 7, 0}, {42, 6, 7, 0},
+        {49, 6, 7, 0}, {56, 6, 7, 0}, {63, 6, 7, 0}, {63, 6, 7, 0},
+        {48, 6, 7, 0}, {41, 6, 7, 0}, {36, 6, 7, 0}, {32, 6, 7, 0},
+        {30, 6, 6, 0}, {28, 6, 6, 0}, {27, 6, 5, 0}, {26, 6, 5, 0},
+        {25, 6, 4, 0}, {25, 6, 4, 0}, {24, 6, 3, 0}, {25, 6, 3, 0},
+        {26, 6, 2, 0}, {28, 6, 2, 0}, {32, 6, 1, 0}, {35, 6, 1, 0},
+        {10, 6, 0, 0}, {11, 6, 0, 0}, {13, 6, 0, 0}, {16, 6, 0, 0},
+        {18, 6, 0, 0}, {20, 6, 0, 0}, {23, 6, 0, 0}, {24, 6, 0, 0}
+    }},
+    // SFX 2: Hit enemy / explosion
+    {3, 0, 0, {
+        {45, 6, 7, 0}, {41, 4, 7, 0}, {36, 4, 7, 0}, {25, 6, 7, 0},
+        {30, 4, 7, 0}, {32, 6, 7, 0}, {29, 6, 7, 0}, {13, 6, 7, 0},
+        {22, 6, 7, 0}, {20, 4, 7, 0}, {16, 4, 7, 0}, {15, 4, 7, 0},
+        {19, 6, 7, 0}, {11, 4, 7, 0}, {9, 4, 7, 0}, {7, 6, 6, 0},
+        {7, 4, 5, 0}, {5, 4, 4, 0}, {8, 6, 3, 0}, {2, 4, 2, 0},
+        {1, 4, 1, 0}, {12, 6, 0, 0}, {5, 6, 0, 0}, {1, 6, 0, 0},
+        {1, 6, 0, 0}, {1, 6, 0, 0}, {3, 6, 0, 0}, {1, 6, 0, 0},
+        {2, 6, 0, 0}, {1, 6, 0, 0}, {1, 6, 0, 0}, {0, 0, 0, 0}
+    }},
+    // SFX 3: (unused placeholder)
+    {1, 0, 0, {
+        {60, 3, 7, 0}, {60, 0, 7, 0}, {55, 1, 7, 0}, {57, 0, 7, 0},
+        {54, 0, 7, 0}, {51, 0, 7, 0}, {47, 1, 7, 0}, {48, 0, 7, 0},
+        {41, 0, 7, 0}, {34, 0, 7, 0}, {32, 0, 7, 0}, {27, 0, 7, 0},
+        {23, 0, 7, 0}, {29, 1, 7, 0}, {20, 0, 7, 0}, {19, 0, 7, 0},
+        {18, 0, 7, 0}, {18, 0, 7, 0}, {19, 0, 7, 0}, {21, 0, 7, 0},
+        {18, 1, 7, 0}, {23, 0, 7, 0}, {18, 1, 7, 0}, {30, 0, 7, 0},
+        {39, 0, 7, 0}, {44, 0, 7, 0}, {53, 0, 7, 0}, {54, 0, 7, 0},
+        {28, 1, 7, 0}, {33, 1, 7, 0}, {46, 1, 7, 0}, {0, 0, 0, 0}
+    }},
+    // SFX 4: (unused placeholder)
+    {1, 0, 13, {
+        {44, 4, 4, 0}, {18, 0, 4, 0}, {1, 0, 2, 0}, {16, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}
+    }},
+    // SFX 5: Bonus pickup
+    {1, 0, 0, {
+        {44, 4, 7, 0}, {40, 4, 7, 0}, {35, 4, 7, 0}, {32, 4, 7, 0},
+        {28, 4, 7, 0}, {26, 4, 7, 0}, {23, 4, 6, 0}, {21, 4, 4, 0},
+        {21, 4, 2, 0}, {20, 4, 0, 0}, {22, 4, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}
+    }},
+    // SFX 6: Boss spawn (eerie triangle wave)
+    {24, 0, 0, {
+        {0, 0, 0, 0}, {7, 3, 6, 0}, {20, 1, 4, 0}, {7, 3, 6, 0},
+        {20, 1, 4, 0}, {26, 3, 7, 0}, {20, 1, 4, 0}, {27, 3, 7, 0},
+        {1, 4, 4, 0}, {23, 3, 7, 0}, {23, 3, 7, 0}, {23, 3, 7, 0},
+        {23, 3, 7, 0}, {23, 3, 6, 0}, {23, 3, 5, 0}, {23, 3, 0, 0},
+        {1, 4, 0, 0}, {1, 4, 0, 0}, {23, 3, 0, 0}, {11, 4, 0, 0},
+        {23, 0, 0, 0}, {23, 0, 0, 0}, {23, 0, 0, 0}, {23, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0},
+        {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}
+    }},
+    // SFX 7: Boss damage
+    {32, 0, 0, {
+        {13, 2, 7, 0}, {13, 2, 7, 0}, {8, 2, 7, 0}, {8, 2, 7, 0},
+        {4, 2, 7, 0}, {4, 2, 7, 0}, {1, 2, 7, 0}, {1, 2, 7, 0},
+        {1, 2, 7, 0}, {1, 2, 7, 0}, {1, 2, 7, 0}, {1, 2, 7, 0},
+        {18, 0, 0, 0}, {18, 0, 0, 0}, {18, 0, 0, 0}, {18, 0, 0, 0},
+        {19, 0, 0, 0}, {20, 0, 0, 0}, {50, 0, 2, 0}, {20, 0, 0, 0},
+        {20, 0, 0, 0}, {52, 0, 4, 0}, {68, 0, 4, 0}, {82, 0, 4, 0},
+        {118, 0, 5, 0}, {82, 0, 4, 0}, {102, 0, 4, 0}, {82, 0, 4, 0},
+        {82, 0, 4, 0}, {82, 0, 4, 0}, {1, 0, 4, 0}, {0, 0, 0, 0}
+    }}
+};
+
+#define NUM_SFX (sizeof(hyperspace_sfx) / sizeof(hyperspace_sfx[0]))
+
+// Audio channel state
+typedef struct {
+    const P8SFX *sfx;     // Current SFX being played
+    int note_index;        // Current note index (0-31)
+    int sample_count;      // Samples played for current note
+    int samples_per_note;  // Samples per note (based on speed)
+    uint32_t phase;        // Oscillator phase accumulator
+    uint32_t phase_inc;    // Phase increment for frequency
+    uint8_t volume;        // Current volume (0-7)
+    uint8_t waveform;      // Current waveform (0-7)
+    bool active;           // Channel is playing
+    bool looping;          // SFX is looping
+} AudioChannel;
+
+static AudioChannel audio_channels[AUDIO_NUM_CHANNELS];
+static uint audio_pwm_slice;
+static uint8_t master_volume = 200;
+static uint32_t lfsr = 0xACE1;  // For noise generation
+
+// Waveform generators (return 0-255)
+static inline uint8_t gen_triangle(uint32_t phase) {
+    // phase is 0-65535
+    uint16_t p = phase >> 8;
+    if (p < 128) return p * 2;
+    else return 255 - (p - 128) * 2;
+}
+
+static inline uint8_t gen_saw(uint32_t phase) {
+    return phase >> 8;
+}
+
+static inline uint8_t gen_square(uint32_t phase, uint8_t duty) {
+    uint16_t p = phase >> 8;
+    return (p < duty) ? 255 : 0;
+}
+
+static inline uint8_t gen_noise(void) {
+    // LFSR noise generator
+    uint32_t bit = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5)) & 1;
+    lfsr = (lfsr >> 1) | (bit << 15);
+    return (lfsr & 0xFF);
+}
+
+// Generate one audio sample (called at AUDIO_SAMPLE_RATE)
+static uint8_t audio_generate_sample(void) {
+    int32_t mix = 0;
+    int active_count = 0;
+
+    for (int ch = 0; ch < AUDIO_NUM_CHANNELS; ch++) {
+        AudioChannel *c = &audio_channels[ch];
+        if (!c->active || c->volume == 0) continue;
+
+        uint8_t sample = 128;  // Center (silence)
+
+        // Generate waveform based on type
+        switch (c->waveform) {
+            case 0: // Triangle
+                sample = gen_triangle(c->phase);
+                break;
+            case 1: // Tilted saw (like triangle but asymmetric)
+                sample = gen_saw(c->phase);
+                break;
+            case 2: // Saw
+                sample = gen_saw(c->phase);
+                break;
+            case 3: // Square
+                sample = gen_square(c->phase, 128);
+                break;
+            case 4: // Pulse (narrow)
+                sample = gen_square(c->phase, 64);
+                break;
+            case 5: // Organ (square + square/2)
+                sample = (gen_square(c->phase, 128) + gen_square(c->phase * 2, 128)) / 2;
+                break;
+            case 6: // Noise
+                sample = gen_noise();
+                break;
+            case 7: // Phaser (two detuned saws)
+                sample = (gen_saw(c->phase) + gen_saw(c->phase + 8192)) / 2;
+                break;
+        }
+
+        // Apply volume (0-7 -> 0-255)
+        int32_t vol_sample = ((int32_t)sample - 128) * c->volume / 7;
+        mix += vol_sample;
+
+        // Advance phase
+        c->phase += c->phase_inc;
+
+        active_count++;
+    }
+
+    // Mix and clamp
+    if (active_count > 0) {
+        mix = mix / active_count;  // Average channels
+    }
+
+    // Convert to unsigned and apply master volume
+    int32_t out = 128 + (mix * master_volume / 255);
+    if (out < 0) out = 0;
+    if (out > 255) out = 255;
+
+    return (uint8_t)out;
+}
+
+// Timer callback for audio generation
+static volatile bool audio_timer_fired = false;
+static struct repeating_timer audio_timer;
+
+static bool audio_timer_callback(struct repeating_timer *t) {
+    (void)t;
+    uint8_t sample = audio_generate_sample();
+    pwm_set_gpio_level(GPIO_AUDIO_PWM, sample);
+    return true;
+}
+
+void thumbycolor_audio_init(void) {
+    // Initialize audio enable pin
+    gpio_init(GPIO_AUDIO_ENABLE);
+    gpio_set_dir(GPIO_AUDIO_ENABLE, GPIO_OUT);
+    gpio_put(GPIO_AUDIO_ENABLE, true);  // Enable audio
+
+    // Initialize PWM for audio output
+    gpio_set_function(GPIO_AUDIO_PWM, GPIO_FUNC_PWM);
+    audio_pwm_slice = pwm_gpio_to_slice_num(GPIO_AUDIO_PWM);
+
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_wrap(&config, AUDIO_PWM_WRAP);
+    pwm_config_set_clkdiv(&config, 1.0f);  // Full speed
+    pwm_init(audio_pwm_slice, &config, true);
+
+    // Start at center (silence)
+    pwm_set_gpio_level(GPIO_AUDIO_PWM, 128);
+
+    // Initialize channels
+    for (int i = 0; i < AUDIO_NUM_CHANNELS; i++) {
+        audio_channels[i].active = false;
+        audio_channels[i].sfx = NULL;
+    }
+
+    // Start audio timer (~22kHz)
+    add_repeating_timer_us(-45, audio_timer_callback, NULL, &audio_timer);  // ~22kHz
+}
+
+void thumbycolor_sfx(int n, int channel) {
+    if (channel < 0 || channel >= AUDIO_NUM_CHANNELS) return;
+
+    AudioChannel *c = &audio_channels[channel];
+
+    if (n == -1) {
+        // Stop this channel
+        c->active = false;
+        return;
+    }
+
+    if (n == -2) {
+        // Stop all channels
+        for (int i = 0; i < AUDIO_NUM_CHANNELS; i++) {
+            audio_channels[i].active = false;
+        }
+        return;
+    }
+
+    if (n < 0 || n >= (int)NUM_SFX) return;
+
+    // Start playing SFX
+    c->sfx = &hyperspace_sfx[n];
+    c->note_index = 0;
+    c->sample_count = 0;
+    c->phase = 0;
+
+    // Calculate samples per note based on SFX speed
+    // PICO-8: speed 1 = very fast, speed 255 = very slow
+    // Each speed unit = 183 samples at 22050Hz (approximately)
+    c->samples_per_note = c->sfx->speed * 183;
+    if (c->samples_per_note < 183) c->samples_per_note = 183;
+
+    // Set up first note
+    uint8_t pitch = c->sfx->notes[0][0];
+    c->waveform = c->sfx->notes[0][1];
+    c->volume = c->sfx->notes[0][2];
+
+    // Calculate phase increment for frequency
+    if (pitch < 64 && c->volume > 0) {
+        uint16_t freq = p8_freq_table[pitch];
+        c->phase_inc = (freq * 65536) / AUDIO_SAMPLE_RATE;
+        c->active = true;
+    } else {
+        c->active = false;
+    }
+
+    // Check if this SFX should loop
+    c->looping = (c->sfx->loop_end > c->sfx->loop_start);
+}
+
+void thumbycolor_audio_update(void) {
+    // Advance note positions for all active channels
+    for (int ch = 0; ch < AUDIO_NUM_CHANNELS; ch++) {
+        AudioChannel *c = &audio_channels[ch];
+        if (!c->active || !c->sfx) continue;
+
+        c->sample_count += AUDIO_SAMPLE_RATE / 60;  // Samples per frame at 60fps
+
+        if (c->sample_count >= c->samples_per_note) {
+            c->sample_count = 0;
+            c->note_index++;
+
+            // Check for loop or end
+            if (c->looping && c->note_index >= c->sfx->loop_end) {
+                c->note_index = c->sfx->loop_start;
+            } else if (c->note_index >= 32) {
+                c->active = false;
+                continue;
+            }
+
+            // Update note parameters
+            uint8_t pitch = c->sfx->notes[c->note_index][0];
+            c->waveform = c->sfx->notes[c->note_index][1];
+            c->volume = c->sfx->notes[c->note_index][2];
+
+            if (pitch < 64 && c->volume > 0) {
+                uint16_t freq = p8_freq_table[pitch];
+                c->phase_inc = (freq * 65536) / AUDIO_SAMPLE_RATE;
+            } else if (c->volume == 0) {
+                // Note with 0 volume = rest, but don't stop channel
+                c->phase_inc = 0;
+            } else {
+                c->active = false;
+            }
+        }
+    }
+}
+
+void thumbycolor_set_volume(uint8_t volume) {
+    master_volume = volume;
+}
+
+// =============================================================================
 // Main Initialization
 // =============================================================================
 
@@ -405,6 +771,7 @@ void thumbycolor_init(void) {
     buttons_init();
     led_init();
     rumble_init();
+    thumbycolor_audio_init();  // Initialize audio
 
     // Set backlight to full
     thumbycolor_set_backlight(1.0f);

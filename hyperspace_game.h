@@ -208,9 +208,20 @@ static void dset(int n, int32_t v) {
     }
 }
 
+// Platform-specific sfx implementation
+// Define PLATFORM_SFX before including this header to use custom implementation
+#ifdef PLATFORM_SFX
+extern void platform_sfx(int n, int channel);
 static void sfx(int n, int channel) {
-    // Sound effects not implemented on PicoSystem (yet)
+    platform_sfx(n, channel);
 }
+#else
+static void sfx(int n, int channel) {
+    // Sound effects not implemented on this platform
+    (void)n;
+    (void)channel;
+}
+#endif
 
 static fix16_t sym_random_fix(fix16_t f) {
     return f - rnd_fix(fix16_mul(f, FIX_TWO));

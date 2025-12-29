@@ -234,6 +234,16 @@ static void color(int c) {
 }
 
 // =============================================================================
+// Platform-specific audio implementation
+// =============================================================================
+
+#define PLATFORM_SFX  // Enable platform-specific sfx() implementation
+
+void platform_sfx(int n, int channel) {
+    thumbycolor_sfx(n, channel);
+}
+
+// =============================================================================
 // Include sprite/map data and game logic (shared with other ports)
 // =============================================================================
 
@@ -302,6 +312,9 @@ int main(void) {
         // Update and draw game
         game_update();
         game_draw();
+
+        // Update audio system (advance note playback)
+        thumbycolor_audio_update();
 
         // Convert to RGB565 and send to display
         render_to_framebuffer();

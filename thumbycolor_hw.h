@@ -101,6 +101,24 @@ void thumbycolor_wait_vsync(void);
 void thumbycolor_set_led(uint8_t r, uint8_t g, uint8_t b);
 void thumbycolor_set_rumble(uint8_t intensity);
 
+// =============================================================================
+// Audio System (PICO-8 Compatible)
+// =============================================================================
+
+// Audio initialization (called by thumbycolor_init)
+void thumbycolor_audio_init(void);
+
+// Play a sound effect (PICO-8 sfx() compatible)
+// n: SFX number (0-7), -1 to stop channel, -2 to stop all
+// channel: Audio channel (0-3)
+void thumbycolor_sfx(int n, int channel);
+
+// Update audio system (call each frame)
+void thumbycolor_audio_update(void);
+
+// Set master volume (0-255)
+void thumbycolor_set_volume(uint8_t volume);
+
 // RGB565 color conversion
 static inline uint16_t thumbycolor_rgb(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
