@@ -209,10 +209,14 @@ static void dset(int n, int32_t v) {
 }
 
 // Platform-specific sfx implementation
+// Forward declaration for sound toggle
+static int sound_enabled;
+
 // Define PLATFORM_SFX before including this header to use custom implementation
 #ifdef PLATFORM_SFX
 extern void platform_sfx(int n, int channel);
 static void sfx(int n, int channel) {
+    if (!sound_enabled) return;
     platform_sfx(n, channel);
 }
 #else
@@ -391,6 +395,7 @@ static fix16_t cur_thrust = 0;
 static fix16_t fade_ratio = F16(-1.0);
 static int manual_fire = 1;  // Default to MANUAL mode (AUTO off)
 static int non_inverted_y = 0;
+static int sound_enabled = 1;  // Sound on by default
 static fix16_t cur_laser_t = 0;
 static int cur_laser_side = -1;
 static fix16_t cur_nme_t = 0;
@@ -1413,6 +1418,8 @@ static void game_update(void) {
             cur_mode = 3;
             manual_fire = dget(1);
             non_inverted_y = dget(2);
+            sound_enabled = dget(3);
+            if (sound_enabled == 0 && dget(3) == 0) sound_enabled = 1;  // Default to on
         }
     } else if (cur_mode == 3) {
         cam_angle_z -= F16(0.00175);
@@ -1424,6 +1431,10 @@ static void game_update(void) {
         if (btnp(2) || btnp(3)) {
             non_inverted_y = 1 - non_inverted_y;
             dset(2, non_inverted_y);
+        }
+        if (btnp(4)) {
+            sound_enabled = 1 - sound_enabled;
+            dset(3, sound_enabled);
         }
 
         if (btnp(5)) {
@@ -1866,11 +1877,12 @@ static void game_draw(void) {
             print_3d(buf, 1, 112);
         } else {
             print_3d("PRESS X TO START", 30, 50);
-            print_3d("ARROWS:OPT", 30, 60);
-            const char* option_str[] = {"AUTO", "MANUAL", "INV Y", "NORM Y"};
-            spr(99, 1, 105, 1, 2);
-            print_3d(option_str[manual_fire], 9, 105);
-            print_3d(option_str[non_inverted_y + 2], 9, 112);
+            print_3d("ARROWS:OPT A:SND", 22, 60);
+            const char* option_str[] = {"AUTO", "MANUAL", "INV Y", "NORM Y", "SND OFF", "SND ON"};
+            spr(99, 1, 98, 1, 2);
+            print_3d(option_str[manual_fire], 9, 98);
+            print_3d(option_str[non_inverted_y + 2], 9, 105);
+            print_3d(option_str[sound_enabled + 4], 9, 112);
         }
     }
 
