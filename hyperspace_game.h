@@ -1683,13 +1683,6 @@ static void set_ngn_pal(void) {
     pal(15, laser_ngn_colors[(index + 2) & 3]);
 }
 
-static void draw_single_flare(int index, fix16_t factor, fix16_t vx, fix16_t vy, int offset) {
-    int px = flr_fix(FIX_SCREEN_CENTER - F16(4.0) + fix16_mul(vx, factor));
-    int py = flr_fix(FIX_SCREEN_CENTER - F16(4.0) + fix16_mul(vy, factor));
-    int cur_offset = ((flare_offset + px + py + offset) & 0x1) * 4;
-    spr(index + cur_offset, px, py, 1, 1);
-}
-
 static void draw_lens_flare(void) {
     int sx = fix16_to_int(star_proj.x);
     int sy = fix16_to_int(star_proj.y);
@@ -1699,11 +1692,19 @@ static void draw_lens_flare(void) {
     fix16_t vx = FIX_SCREEN_CENTER - star_proj.x;
     fix16_t vy = FIX_SCREEN_CENTER - star_proj.y;
 
-    draw_single_flare(40, F16(-0.3), vx, vy, 0);
-    draw_single_flare(59, F16(0.4), vx, vy, 1);
-    draw_single_flare(56, F16(0.5), vx, vy, 0);
-    draw_single_flare(42, F16(0.9), vx, vy, 1);
-    draw_single_flare(43, F16(1.0), vx, vy, 0);
+    fix16_t factors[] = {F16(-0.3), F16(0.4), F16(0.5), F16(0.9), F16(1.0)};
+    // Sprite indices for each flare element (swapped 0 and 1 to match original)
+    int sprite_map[] = {1, 0, 2, 3, 2};
+
+    // Use flare_offset to alternate between sprite sets 40-43 and 44-47
+    int base_sprite = 40 + flare_offset * 4;
+
+    for (int i = 0; i < 5; i++) {
+        int px = fix16_to_int(FIX_SCREEN_CENTER + fix16_mul(vx, factors[i]));
+        int py = fix16_to_int(FIX_SCREEN_CENTER + fix16_mul(vy, factors[i]));
+        // Center the 8x8 sprite by offsetting -4
+        spr(base_sprite + sprite_map[i], px - 4, py - 4, 1, 1);
+    }
 
     flare_offset = 1 - flare_offset;
 }
