@@ -16,12 +16,13 @@ A port of the PICO-8 game "Hyperspace" by J-Fry to the TinyCircuits Thumby Color
 - Auto-fire and manual fire modes
 - Lens flare effects with temporal dithering
 - Persistent high score via flash storage
+- **Supports both ARM (Cortex-M33) and RISC-V (Hazard3) builds**
 
 ## Hardware
 
 | Component | Specification |
 |-----------|---------------|
-| MCU | RP2350 (Dual ARM Cortex-M33 @ 150MHz) |
+| MCU | RP2350 (Dual ARM Cortex-M33 or Hazard3 RISC-V @ 150MHz) |
 | Display | GC9107 128x128 0.85" IPS LCD |
 | Color | RGB565 (65,536 colors) |
 | Interface | SPI @ 80MHz with DMA |
@@ -32,7 +33,8 @@ A port of the PICO-8 game "Hyperspace" by J-Fry to the TinyCircuits Thumby Color
 
 - [Pico SDK](https://github.com/raspberrypi/pico-sdk) (v2.0.0 or later for RP2350)
 - CMake 3.13+
-- ARM GCC toolchain
+- ARM GCC toolchain (`arm-none-eabi-gcc`)
+- (Optional) RISC-V toolchain for RISC-V builds
 
 ### Environment Setup
 
@@ -40,15 +42,75 @@ A port of the PICO-8 game "Hyperspace" by J-Fry to the TinyCircuits Thumby Color
 export PICO_SDK_PATH=/path/to/pico-sdk
 ```
 
-### Build Steps
+### Quick Build (using build script)
 
 ```bash
 cd thumbycolor
-mkdir build
-cd build
+
+# ARM build (default)
+./build.sh
+
+# Or explicitly:
+./build.sh arm
+
+# RISC-V build
+./build.sh riscv
+
+# Clean build directory
+./build.sh clean
+```
+
+### Manual Build with CMake
+
+#### ARM Build (Cortex-M33)
+
+```bash
+cd thumbycolor
+mkdir build && cd build
 cmake ..
 make -j$(nproc)
 ```
+
+#### RISC-V Build (Hazard3)
+
+```bash
+cd thumbycolor
+mkdir build && cd build
+cmake -DRISCV=ON ..
+make -j$(nproc)
+```
+
+### RISC-V Toolchain Installation
+
+RP2350's RISC-V cores are 32-bit Hazard3 (RV32IMAC). The Pico SDK looks for `riscv32-unknown-elf-gcc`.
+
+**Option 1: xPack GNU RISC-V Embedded GCC (recommended)**
+
+Download from: https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases
+
+After extracting, create symlinks in the bin directory:
+```bash
+cd /path/to/xpack-riscv-none-elf-gcc/bin
+ln -s riscv-none-elf-gcc riscv32-unknown-elf-gcc
+ln -s riscv-none-elf-g++ riscv32-unknown-elf-g++
+ln -s riscv-none-elf-objcopy riscv32-unknown-elf-objcopy
+ln -s riscv-none-elf-objdump riscv32-unknown-elf-objdump
+```
+
+Then add to PATH or set `PICO_TOOLCHAIN_PATH`:
+```bash
+export PATH=/path/to/xpack-riscv-none-elf-gcc/bin:$PATH
+# Or:
+export PICO_TOOLCHAIN_PATH=/path/to/xpack-riscv-none-elf-gcc/bin
+```
+
+**Option 2: Raspberry Pi's prebuilt toolchain**
+
+Download from: https://github.com/raspberrypi/pico-sdk-tools/releases
+
+> **Note**: `gcc-riscv64-unknown-elf` (64-bit) does NOT work. RP2350 requires a 32-bit RISC-V toolchain.
+
+### Output
 
 The output `hyperspace_thumbycolor.uf2` can be copied to the Thumby Color in bootloader mode (hold BOOTSEL while connecting USB).
 
@@ -102,6 +164,15 @@ Based on TinyCircuits Thumby Color hardware:
 
 ## Technical Details
 
+### CPU Architecture Options
+
+| Architecture | Core | ISA | Notes |
+|--------------|------|-----|-------|
+| ARM (default) | Cortex-M33 | ARMv8-M | Better toolchain support |
+| RISC-V | Hazard3 | RV32IMAC + extensions | Experimental |
+
+RISC-V extensions: Zicsr, Zifencei, Zba, Zbb, Zbs, Zbkb
+
 ### Display Driver (GC9107)
 
 - SPI0 at 80MHz for pixel data (16-bit transfers)
@@ -147,19 +218,36 @@ Based on TinyCircuits Thumby Color hardware:
 
 ```
 thumbycolor/
-├── main_thumbycolor.c    # Main game code
+├── main_thumbycolor.c    # Platform-specific main code
 ├── thumbycolor_hw.c      # Hardware abstraction layer
 ├── thumbycolor_hw.h      # HAL header
-├── CMakeLists.txt        # Build configuration
+├── CMakeLists.txt        # Build configuration (ARM/RISC-V)
+├── build.sh              # Build script
+├── README.md             # This file
 └── build/                # Build output directory
     └── hyperspace_thumbycolor.uf2
+
+../
+├── hyperspace_game.h     # Shared game logic (all ports)
+├── hyperspace_data.h     # Shared sprite/mesh data
+└── libfixmath/           # Fixed-point math library
 ```
+
+## Code Architecture
+
+The game logic is shared across multiple ports via `hyperspace_game.h`:
+
+- **hyperspace_game.h**: Platform-independent game logic, rendering, and state
+- **main_thumbycolor.c**: Thumby Color specific code (display, input, main loop)
+- **thumbycolor_hw.c/h**: Hardware abstraction (SPI, GPIO, audio)
+
+This allows the same game logic to run on PicoSystem, Thumby Color, GBA, and SDL2.
 
 ## Related Projects
 
-- [Hyperspace for PicoSystem](https://github.com/itsmeterada/picosystem_hyperspace) - Port for Pimoroni PicoSystem
-- [Hyperspace for GBA](https://github.com/itsmeterada/hyperspace_gba) - Port for Game Boy Advance
-- [Hyperspace SDL2](https://github.com/itsmeterada/hyperspace) - SDL2 port for desktop platforms
+- [Hyperspace for PicoSystem](../) - Port for Pimoroni PicoSystem
+- [Hyperspace for GBA](../gba/) - Port for Game Boy Advance
+- [Hyperspace SDL2](../hyperspace_sdl2.c) - SDL2 port for desktop platforms
 
 ## Credits
 

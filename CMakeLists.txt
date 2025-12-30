@@ -1,7 +1,41 @@
 cmake_minimum_required(VERSION 3.13)
 
+# Option to build for RISC-V instead of ARM
+# Usage:
+#   ARM build (default):  cmake ..
+#   RISC-V build:         cmake -DRISCV=ON ..
+#
+# For RISC-V, you need a 32-bit RISC-V toolchain.
+# Pico SDK looks for: riscv32-unknown-elf-gcc or riscv32-corev-elf-gcc
+#
+# Option 1: xPack GNU RISC-V Embedded GCC (recommended)
+#   Download from: https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases
+#   Extract and create symlinks:
+#     ln -s riscv-none-elf-gcc riscv32-unknown-elf-gcc
+#     ln -s riscv-none-elf-g++ riscv32-unknown-elf-g++
+#     ln -s riscv-none-elf-objcopy riscv32-unknown-elf-objcopy
+#     ln -s riscv-none-elf-objdump riscv32-unknown-elf-objdump
+#   Or set: export PICO_TOOLCHAIN_PATH=/path/to/xpack-riscv-none-elf-gcc/bin
+#
+# Option 2: Raspberry Pi's prebuilt toolchain
+#   https://github.com/raspberrypi/pico-sdk-tools/releases
+#
+# Note: gcc-riscv64-unknown-elf does NOT work - RP2350 uses 32-bit RISC-V (Hazard3)
+option(RISCV "Build for RISC-V architecture" OFF)
+
 # ThumbyColor uses RP2350
-set(PICO_PLATFORM rp2350)
+if(RISCV)
+    message(STATUS "========================================")
+    message(STATUS "Building for RP2350 RISC-V")
+    message(STATUS "========================================")
+    set(PICO_PLATFORM rp2350-riscv)
+else()
+    message(STATUS "========================================")
+    message(STATUS "Building for RP2350 ARM (Cortex-M33)")
+    message(STATUS "========================================")
+    set(PICO_PLATFORM rp2350-arm-s)
+endif()
+
 set(PICO_BOARD pico2)
 
 # Include Pico SDK
@@ -17,12 +51,12 @@ pico_sdk_init()
 
 # Add libfixmath
 add_library(libfixmath STATIC
-    ./libfixmath/fix16.c
-    ./libfixmath/fix16_sqrt.c
-    ./libfixmath/fix16_trig.c
-    ./libfixmath/fix16_exp.c
+    ../libfixmath/fix16.c
+    ../libfixmath/fix16_sqrt.c
+    ../libfixmath/fix16_trig.c
+    ../libfixmath/fix16_exp.c
 )
-target_include_directories(libfixmath PUBLIC ./libfixmath)
+target_include_directories(libfixmath PUBLIC ../libfixmath)
 target_compile_definitions(libfixmath PUBLIC FIXMATH_NO_OVERFLOW)
 
 # Main executable
@@ -45,6 +79,8 @@ target_link_libraries(hyperspace_thumbycolor
     hardware_adc
     hardware_flash
     hardware_sync
+    hardware_timer
+    pico_time
     libfixmath
 )
 
@@ -55,7 +91,7 @@ pico_enable_stdio_uart(hyperspace_thumbycolor 0)
 # Create UF2 file
 pico_add_extra_outputs(hyperspace_thumbycolor)
 
-# Optimize for size
+# Optimize for speed
 target_compile_options(hyperspace_thumbycolor PRIVATE
     -O3
     -ffast-math
