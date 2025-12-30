@@ -25,7 +25,9 @@ A port of the PICO-8 game "Hyperspace" by J-Fry to the TinyCircuits Thumby Color
 | MCU | RP2350 (Dual ARM Cortex-M33 or Hazard3 RISC-V @ 150MHz) |
 | Display | GC9107 128x128 0.85" IPS LCD |
 | Color | RGB565 (65,536 colors) |
-| Interface | SPI @ 80MHz with DMA |
+| Display Interface | SPI @ 80MHz with DMA |
+| Audio | Magnetic Buzzer (PWM driven, 22kHz 8-bit) |
+| Haptics | DC Vibration Motor |
 
 ## Building
 
@@ -186,6 +188,100 @@ RISC-V extensions: Zicsr, Zifencei, Zba, Zbb, Zbs, Zbkb
 - Internal: 8-bit palette indices (PICO-8 16-color palette)
 - Display: RGB565 (16-bit, R and B channels swapped for GC9107)
 - Palette animation supported via `pal()` function
+
+### Audio System
+
+Thumby Color uses a **magnetic buzzer** for audio output, driven by a PICO-8 compatible software synthesizer.
+
+#### Hardware
+
+| Component | Specification |
+|-----------|---------------|
+| Output Device | Magnetic Buzzer |
+| Output Method | PWM (Pulse Width Modulation) |
+| PWM GPIO | 23 |
+| Enable GPIO | 20 |
+
+#### PWM Audio
+
+PWM audio works by rapidly switching a digital output ON/OFF. The duty cycle (ratio of ON time) controls the average voltage, which the buzzer smooths into an analog-like waveform.
+
+```
+Audio Sample (0-255) → PWM Duty Cycle → Buzzer → Sound Wave
+     128 (50%)       → ████░░░░        → ~~~    → Silence
+     255 (100%)      → ████████        → ───    → Peak
+       0 (0%)        → ░░░░░░░░        → ___    → Trough
+```
+
+#### Audio Parameters
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Sample Rate | 22,050 Hz | Updated via timer interrupt (~45μs) |
+| Resolution | 8-bit | 256 volume levels |
+| PWM Frequency | ~586 kHz | 150MHz / 256 (inaudible carrier) |
+| Channels | 4 | PICO-8 compatible polyphony |
+
+#### PICO-8 Compatible Waveforms
+
+| ID | Waveform | Description |
+|----|----------|-------------|
+| 0 | Triangle | Smooth, mellow tone |
+| 1 | Tilted Saw | Asymmetric sawtooth |
+| 2 | Sawtooth | Bright, buzzy tone |
+| 3 | Square (50%) | Classic chiptune sound |
+| 4 | Pulse (25%) | Narrower pulse, hollow sound |
+| 5 | Organ | Square + octave harmonic |
+| 6 | Noise | LFSR pseudo-random (explosions, etc.) |
+| 7 | Phaser | Two detuned sawtooths |
+
+#### Sound Effects
+
+| SFX ID | Usage |
+|--------|-------|
+| 0 | Laser fire (descending saw wave) |
+| 1 | Player damage / Barrel roll |
+| 2 | Enemy hit / Explosion |
+| 5 | Bonus pickup |
+| 6 | Boss spawn (eerie triangle wave) |
+| 7 | Boss damage |
+
+#### Implementation Details
+
+**Phase Accumulator Oscillator:**
+```c
+// Frequency to phase increment
+phase_inc = (frequency * 65536) / AUDIO_SAMPLE_RATE;
+
+// Sample generation (called at 22kHz)
+phase += phase_inc;
+sample = waveform_generator(phase);
+```
+
+**Channel Mixing:**
+```c
+// All active channels are averaged
+mix = sum_of_channels / active_channel_count;
+
+// Master volume applied (default: 200/255)
+output = 128 + (mix * master_volume / 255);
+```
+
+**LFSR Noise Generator:**
+```c
+// 16-bit Linear Feedback Shift Register
+bit = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5)) & 1;
+lfsr = (lfsr >> 1) | (bit << 15);
+```
+
+#### Why Magnetic Buzzer + PWM Works Well
+
+| Advantage | Explanation |
+|-----------|-------------|
+| Natural low-pass filter | Buzzer mechanics smooth out PWM carrier frequency |
+| Wide frequency response | Better bass than piezo speakers |
+| Simple interface | Single GPIO + enable pin |
+| Low CPU overhead | Timer interrupt handles sample output |
 
 ### Rendering Pipeline
 
