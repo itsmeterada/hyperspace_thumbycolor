@@ -75,8 +75,8 @@ static void gc9107_cmd_with_data(uint8_t cmd, const uint8_t *data, size_t len) {
 }
 
 // Display offset (GC9107 has 128x160 RAM, display is 128x128)
-#define DISPLAY_OFFSET_X 2
-#define DISPLAY_OFFSET_Y 1
+#define DISPLAY_OFFSET_X 0
+#define DISPLAY_OFFSET_Y 0
 
 static void gc9107_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     // Apply offset
@@ -111,70 +111,82 @@ static void gc9107_init_sequence(void) {
     gpio_put(GPIO_RST, true);
     sleep_ms(120);
 
-    // Use 8-bit SPI for initialization
+    // Use 8-bit SPI for initialization (Mode 0 for commands)
     spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
     spi_set_baudrate(SPI_PORT, SPI_BAUDRATE_CMD);
 
-    // Inter-register enable commands (from TinyCircuits)
+    // Inter-register enable commands
     gc9107_cmd_with_data(0xFE, NULL, 0);
     gc9107_cmd_with_data(0xEF, NULL, 0);
 
-    // Sleep out
-    gc9107_cmd_with_data(GC9107_SLPOUT, NULL, 0);
-    sleep_ms(120);
-
-    // Memory Data Access Control
-    // Bit 7 (MY): Row address order (flip vertical)
-    // Bit 6 (MX): Column address order (flip horizontal)
-    uint8_t madctl = 0xC0;  // 180° rotation
-    gc9107_cmd_with_data(GC9107_MADCTL, &madctl, 1);
-
-    // Interface Pixel Format: 16-bit RGB565
-    uint8_t colmod = 0x05;  // 16-bit RGB565
-    gc9107_cmd_with_data(GC9107_COLMOD, &colmod, 1);
-
-    // RGB565 complement setting (from TinyCircuits)
-    gc9107_cmd_with_data(0xAC, (uint8_t[]){0xC8}, 1);
-
-    // GC9107 specific registers (from TinyCircuits)
+    // Power control registers (TinyCircuits values)
     gc9107_cmd_with_data(0xB0, (uint8_t[]){0xC0}, 1);
     gc9107_cmd_with_data(0xB1, (uint8_t[]){0x80}, 1);
-    gc9107_cmd_with_data(0xB2, (uint8_t[]){0x3d}, 1);
-    gc9107_cmd_with_data(0xB3, (uint8_t[]){0x1f}, 1);
-    gc9107_cmd_with_data(0xB7, (uint8_t[]){0x35}, 1);
+    gc9107_cmd_with_data(0xB2, (uint8_t[]){0x2F}, 1);  // Was 0x3d
+    gc9107_cmd_with_data(0xB3, (uint8_t[]){0x03}, 1);  // Was 0x1f
+    gc9107_cmd_with_data(0xB7, (uint8_t[]){0x01}, 1);  // Was 0x35
+    gc9107_cmd_with_data(0xB6, (uint8_t[]){0x19}, 1);  // NEW
 
-    gc9107_cmd_with_data(0xBB, (uint8_t[]){0x39}, 1);
-    gc9107_cmd_with_data(0xC0, (uint8_t[]){0x2c}, 1);
-    gc9107_cmd_with_data(0xC2, (uint8_t[]){0x01}, 1);
-    gc9107_cmd_with_data(0xC3, (uint8_t[]){0x20}, 1);  // VCOM increased for brighter display
-    gc9107_cmd_with_data(0xC4, (uint8_t[]){0x20}, 1);
-    gc9107_cmd_with_data(0xC6, (uint8_t[]){0x0f}, 1);  // Frame rate
-    gc9107_cmd_with_data(0xAB, (uint8_t[]){0x0f}, 1);
+    // RGB565 complement setting
+    gc9107_cmd_with_data(0xAC, (uint8_t[]){0xC8}, 1);
+    gc9107_cmd_with_data(0xAB, (uint8_t[]){0x0F}, 1);
 
-    gc9107_cmd_with_data(0xD0, (uint8_t[]){0xA4, 0xA1}, 2);
+    // Interface Pixel Format: 16-bit RGB565
+    gc9107_cmd_with_data(GC9107_COLMOD, (uint8_t[]){0x05}, 1);
 
-    // Positive voltage gamma control (adjusted for brighter output)
+    // Display control registers (TinyCircuits values)
+    gc9107_cmd_with_data(0xB4, (uint8_t[]){0x04}, 1);  // NEW
+    gc9107_cmd_with_data(0xA8, (uint8_t[]){0x07}, 1);  // NEW - Frame rate
+    gc9107_cmd_with_data(0xB8, (uint8_t[]){0x08}, 1);  // NEW
+
+    // Voltage regulation (TinyCircuits values) - CRITICAL FOR COLOR
+    gc9107_cmd_with_data(0xE7, (uint8_t[]){0x5A}, 1);  // VREG_CTL
+    gc9107_cmd_with_data(0xE8, (uint8_t[]){0x23}, 1);  // VGH_SET
+    gc9107_cmd_with_data(0xE9, (uint8_t[]){0x47}, 1);  // VGL_SET
+    gc9107_cmd_with_data(0xEA, (uint8_t[]){0x99}, 1);  // VGH_VGL_CLK
+
+    // Gamma/contrast control
+    gc9107_cmd_with_data(0xC6, (uint8_t[]){0x30}, 1);  // Was 0x0f
+    gc9107_cmd_with_data(0xC7, (uint8_t[]){0x1F}, 1);  // NEW
+
+    // Memory Data Access Control (0x00 = no rotation)
+    gc9107_cmd_with_data(GC9107_MADCTL, (uint8_t[]){0x00}, 1);
+
+    // Gamma curves (TinyCircuits values - 14 bytes each)
     gc9107_cmd_with_data(0xF0, (uint8_t[]){
-        0x3F, 0x0C, 0x0A, 0x0A, 0x22, 0x28
-    }, 6);
+        0x05, 0x1D, 0x51, 0x2F, 0x85, 0x2A, 0x11,
+        0x62, 0x00, 0x07, 0x07, 0x0F, 0x08, 0x1F
+    }, 14);
 
-    // Negative voltage gamma control (adjusted for brighter output)
     gc9107_cmd_with_data(0xF1, (uint8_t[]){
-        0x3D, 0x68, 0x6A, 0x30, 0x32, 0x68
-    }, 6);
+        0x2E, 0x41, 0x62, 0x56, 0xA5, 0x3A, 0x3F,
+        0x60, 0x0F, 0x07, 0x0A, 0x18, 0x18, 0x1D
+    }, 14);
 
-    // Set display window to full screen
-    gc9107_set_window(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
-
-    // Display Inversion ON (0x21)
-    gc9107_cmd_with_data(0x21, NULL, 0);
+    // Sleep out (AFTER register setup, per TinyCircuits)
+    gc9107_cmd_with_data(GC9107_SLPOUT, NULL, 0);
+    sleep_ms(120);
 
     // Display ON
     gc9107_cmd_with_data(GC9107_DISPON, NULL, 0);
     sleep_ms(10);
 
-    // Switch to 16-bit SPI for pixel data
-    spi_set_format(SPI_PORT, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    // Set display window to full screen
+    gc9107_set_window(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
+
+    // Clear ENTIRE display RAM (128x160) with black pixels
+    // GC9107 has 128x160 RAM even though display is 128x128
+    gc9107_set_window(0, 0, 127, 159);  // Full RAM area
+    gc9107_write_cmd(GC9107_RAMWR);
+    // 128 * 160 * 2 = 40960 bytes
+    for (int i = 0; i < 128 * 160 * 2; i++) {
+        uint8_t zero = 0x00;
+        spi_write_blocking(SPI_PORT, &zero, 1);
+    }
+    gc9107_set_cs(false);
+
+    // Switch to 16-bit SPI Mode 3 for pixel data (TinyCircuits uses CPOL=1, CPHA=1)
+    spi_set_format(SPI_PORT, 16, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
     spi_set_baudrate(SPI_PORT, SPI_BAUDRATE_DATA);
 }
 
@@ -266,6 +278,11 @@ void thumbycolor_update(uint16_t *framebuffer) {
         dma_channel_wait_for_finish_blocking(dma_channel);
     }
 
+    // Wait for SPI to finish any pending transfers
+    while (spi_is_busy(SPI_PORT)) {
+        tight_loop_contents();
+    }
+
     // Switch to 8-bit for command
     spi_set_format(SPI_PORT, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
 
@@ -275,10 +292,15 @@ void thumbycolor_update(uint16_t *framebuffer) {
     // Start memory write
     gc9107_write_cmd(GC9107_RAMWR);
 
-    // Switch to 16-bit for pixel data
-    spi_set_format(SPI_PORT, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    // Wait for SPI to finish command
+    while (spi_is_busy(SPI_PORT)) {
+        tight_loop_contents();
+    }
 
-    // Start DMA transfer
+    // Switch to 16-bit SPI Mode 3 for pixel data (TinyCircuits uses CPOL=1, CPHA=1)
+    spi_set_format(SPI_PORT, 16, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
+
+    // DMA transfer
     dma_channel_configure(
         dma_channel,
         &dma_config,

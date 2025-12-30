@@ -27,27 +27,62 @@
 #define SCREEN_WIDTH  128
 #define SCREEN_HEIGHT 128
 
-// RGB565 color macro (R and B swapped for this display)
-#define RGB565(r, g, b) (((b & 0xF8) << 8) | ((g & 0xFC) << 3) | (r >> 3))
+// RGB333 color format (discovered through testing)
+// This display actually uses 3 bits per channel (512 colors total)
+// - Red: bit 0 (MSB), bits 15-14 (LSB) = 3 bits
+// - Green: bits 11-9 = 3 bits
+// - Blue: bits 5-3 = 3 bits
+// - Other bits (13,12,8,7,6,2,1) are unused
+
+#define RGB565(r, g, b) ( \
+    (((r) >> 7) & 0x01)         |  /* R8 bit 7 → output bit 0 (R MSB) */ \
+    ((((r) >> 5) & 0x03) << 14) |  /* R8 bits 6-5 → output bits 15-14 (R LSB) */ \
+    ((((g) >> 5) & 0x07) << 9)  |  /* G8 bits 7-5 → output bits 11-9 */ \
+    ((((b) >> 5) & 0x07) << 3)     /* B8 bits 7-5 → output bits 5-3 */ \
+)
+
+// Old incorrect format (for reference)
+#define RGB565_OLD(r, g, b) ( \
+    (((r) & 0xC0) << 8) |  /* R bits 7-6 → output bits 15-14 */ \
+    (((g) & 0xFC) << 6) |  /* G bits 7-2 → output bits 13-8 */ \
+    (((b) & 0xF8) >> 0) |  /* B bits 7-3 → output bits 7-3 */ \
+    (((r) & 0x38) >> 3)    /* R bits 5-3 → output bits 2-0 */ \
+)
+
+// Format B: Standard RGB565 (TinyCircuits style)
+#define RGB565_STD(r, g, b) ( \
+    (((r) & 0xF8) << 8) |  /* R bits 7-3 → output bits 15-11 */ \
+    (((g) & 0xFC) << 3) |  /* G bits 7-2 → output bits 10-5 */ \
+    (((b) >> 3) & 0x1F)    /* B bits 7-3 → output bits 4-0 */ \
+)
+
+// Format C: Standard RGB565 byte-swapped
+#define RGB565_STD_SWAP(r, g, b) ( \
+    ((RGB565_STD(r,g,b) >> 8) & 0xFF) | ((RGB565_STD(r,g,b) << 8) & 0xFF00) \
+)
+
+// Format D: Standard RGB565 byte-swapped with corrected channel order
+// STD_SWAP shows BRG (R→B, G→R, B→G), so input must be (b, r, g)
+#define RGB565_STD_SWAP_FIXED(r, g, b) RGB565_STD_SWAP(b, r, g)
 
 // PICO-8 16-color palette in RGB565
 static const uint16_t PICO8_PALETTE[16] = {
-    RGB565(0x00, 0x00, 0x00), //  0: black
-    RGB565(0x1D, 0x2B, 0x53), //  1: dark blue
-    RGB565(0x7E, 0x25, 0x53), //  2: dark purple
-    RGB565(0x00, 0x87, 0x51), //  3: dark green
-    RGB565(0xAB, 0x52, 0x36), //  4: brown
-    RGB565(0x5F, 0x57, 0x4F), //  5: dark gray
-    RGB565(0xC2, 0xC3, 0xC7), //  6: light gray
-    RGB565(0xFF, 0xF1, 0xE8), //  7: white
-    RGB565(0xFF, 0x00, 0x4D), //  8: red
-    RGB565(0xFF, 0xA3, 0x00), //  9: orange
-    RGB565(0xFF, 0xEC, 0x27), // 10: yellow
-    RGB565(0x00, 0xE4, 0x36), // 11: green
-    RGB565(0x29, 0xAD, 0xFF), // 12: blue
-    RGB565(0x83, 0x76, 0x9C), // 13: indigo
-    RGB565(0xFF, 0x77, 0xA8), // 14: pink
-    RGB565(0xFF, 0xCC, 0xAA), // 15: peach
+    RGB565(0x00, 0x00, 0x00), //  0: black        #000000
+    RGB565(0x1D, 0x2B, 0x53), //  1: dark blue    #1D2B53
+    RGB565(0x7E, 0x25, 0x53), //  2: dark purple  #7E2553
+    RGB565(0x00, 0x87, 0x51), //  3: dark green   #008751
+    RGB565(0xAB, 0x52, 0x36), //  4: brown        #AB5236
+    RGB565(0x5F, 0x57, 0x4F), //  5: dark gray    #5F574F
+    RGB565(0xC2, 0xC3, 0xC7), //  6: light gray   #C2C3C7
+    RGB565(0xFF, 0xF1, 0xE8), //  7: white        #FFF1E8
+    RGB565(0xFF, 0x00, 0x4D), //  8: red          #FF004D
+    RGB565(0xFF, 0xA3, 0x00), //  9: orange       #FFA300
+    RGB565(0xFF, 0xEC, 0x27), // 10: yellow       #FFEC27
+    RGB565(0x00, 0xE4, 0x36), // 11: green        #00E436
+    RGB565(0x29, 0xAD, 0xFF), // 12: blue         #29ADFF
+    RGB565(0x83, 0x76, 0x9C), // 13: indigo       #83769C
+    RGB565(0xFF, 0x77, 0xA8), // 14: pink         #FF77A8
+    RGB565(0xFF, 0xCC, 0xAA), // 15: peach        #FFCCAA
 };
 
 // Screen buffer (8-bit palette indices)
@@ -78,6 +113,8 @@ static uint32_t rnd_state = 1;
 // Button states
 static bool btn_state[6] = {false};
 static bool btn_prev[6] = {false};
+static bool btn_menu_held = false;  // Menu button for palette display
+static bool btn_bumper_l_held = false;  // L button for color bar test
 
 // Cart data (persistent storage)
 static int32_t cart_data[64] = {0};
@@ -267,6 +304,89 @@ static void update_buttons(void) {
     btn_state[3] = (buttons & BUTTON_DOWN) != 0;
     btn_state[4] = (buttons & BUTTON_A) != 0;      // Fire / OK
     btn_state[5] = (buttons & BUTTON_B) != 0;      // Barrel roll
+
+    // Menu button for palette display
+    btn_menu_held = (buttons & BUTTON_MENU) != 0;
+
+    // L bumper for color bar test
+    btn_bumper_l_held = (buttons & BUTTON_BUMPER_L) != 0;
+}
+
+// =============================================================================
+// Palette Display (for PICO-8 color comparison)
+// =============================================================================
+
+static void draw_palette_display(void) {
+    // 4x4 grid of 16 colors
+    // Each cell is 32x32 pixels (128/4 = 32)
+    const int cell_size = 32;
+
+    for (int i = 0; i < 16; i++) {
+        int col = i % 4;
+        int row = i / 4;
+        int x0 = col * cell_size;
+        int y0 = row * cell_size;
+
+        // Fill rectangle with color i (bypass palette_map to show true colors)
+        for (int y = y0; y < y0 + cell_size; y++) {
+            for (int x = x0; x < x0 + cell_size; x++) {
+                screen[y][x] = i;
+            }
+        }
+
+        // Draw border (color 0 or 7 for contrast)
+        int border_color = (i == 0 || i == 1 || i == 2 || i == 5) ? 7 : 0;
+        for (int x = x0; x < x0 + cell_size; x++) {
+            screen[y0][x] = border_color;
+            screen[y0 + cell_size - 1][x] = border_color;
+        }
+        for (int y = y0; y < y0 + cell_size; y++) {
+            screen[y][x0] = border_color;
+            screen[y][x0 + cell_size - 1] = border_color;
+        }
+    }
+}
+
+// =============================================================================
+// Color Bar Test (direct RGB565 output)
+// =============================================================================
+
+static void draw_color_bars_test(void) {
+    // Test RGB333 macro with 100% and 50% colors
+    // Top: 100%, Bottom: 50%
+    // Columns: Red, Green, Blue, White
+    const int half_height = SCREEN_HEIGHT / 2;
+
+    // 100% colors
+    const uint16_t full[4] = {
+        RGB565(0xFF, 0x00, 0x00),  // Red
+        RGB565(0x00, 0xFF, 0x00),  // Green
+        RGB565(0x00, 0x00, 0xFF),  // Blue
+        RGB565(0xFF, 0xFF, 0xFF),  // White
+    };
+
+    // 50% colors
+    const uint16_t half[4] = {
+        RGB565(0x80, 0x00, 0x00),  // 50% Red
+        RGB565(0x00, 0x80, 0x00),  // 50% Green
+        RGB565(0x00, 0x00, 0x80),  // 50% Blue
+        RGB565(0x80, 0x80, 0x80),  // 50% Gray
+    };
+
+    for (int y = 0; y < SCREEN_HEIGHT; y++) {
+        for (int x = 0; x < SCREEN_WIDTH; x++) {
+            int col = (x * 4) / SCREEN_WIDTH;
+            if (col > 3) col = 3;
+
+            if (y < half_height) {
+                framebuffer[y * SCREEN_WIDTH + x] = full[col];
+            } else if (y == half_height) {
+                framebuffer[y * SCREEN_WIDTH + x] = 0x0E39;  // Gray divider
+            } else {
+                framebuffer[y * SCREEN_WIDTH + x] = half[col];
+            }
+        }
+    }
 }
 
 // =============================================================================
@@ -309,16 +429,25 @@ int main(void) {
         // Update input
         update_buttons();
 
-        // Update and draw game
-        game_update();
-        game_draw();
-
-        // Update audio system (advance note playback)
-        thumbycolor_audio_update();
-
-        // Convert to RGB565 and send to display
-        render_to_framebuffer();
-        thumbycolor_update(framebuffer);
+        // Update and draw game (or show test patterns)
+        if (btn_bumper_l_held) {
+            // Show color bar test when L is held (direct framebuffer)
+            draw_color_bars_test();
+            thumbycolor_update(framebuffer);
+        } else if (btn_menu_held) {
+            // Show palette display when Menu is held
+            draw_palette_display();
+            render_to_framebuffer();
+            thumbycolor_update(framebuffer);
+        } else {
+            game_update();
+            game_draw();
+            // Update audio system (advance note playback)
+            thumbycolor_audio_update();
+            // Convert to RGB565 and send to display
+            render_to_framebuffer();
+            thumbycolor_update(framebuffer);
+        }
 
         // Wait for vsync (~30 FPS for game)
         thumbycolor_wait_vsync();
