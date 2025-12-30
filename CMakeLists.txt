@@ -8,17 +8,11 @@ cmake_minimum_required(VERSION 3.13)
 # For RISC-V, you need a 32-bit RISC-V toolchain.
 # Pico SDK looks for: riscv32-unknown-elf-gcc or riscv32-corev-elf-gcc
 #
-# Option 1: xPack GNU RISC-V Embedded GCC (recommended)
-#   Download from: https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases
-#   Extract and create symlinks:
-#     ln -s riscv-none-elf-gcc riscv32-unknown-elf-gcc
-#     ln -s riscv-none-elf-g++ riscv32-unknown-elf-g++
-#     ln -s riscv-none-elf-objcopy riscv32-unknown-elf-objcopy
-#     ln -s riscv-none-elf-objdump riscv32-unknown-elf-objdump
-#   Or set: export PICO_TOOLCHAIN_PATH=/path/to/xpack-riscv-none-elf-gcc/bin
-#
-# Option 2: Raspberry Pi's prebuilt toolchain
-#   https://github.com/raspberrypi/pico-sdk-tools/releases
+# Recommended: CORE-V Toolchain (no symlinks needed!)
+#   Download from: https://buildbot.embecosm.com/job/corev-gcc-ubuntu2204/
+#   Extract and set environment:
+#     export PICO_TOOLCHAIN_PATH=/path/to/corev-openhw-gcc-ubuntu2204-YYYYMMDD
+#   Reference: https://www.cnx-software.com/2024/08/31/using-risc-v-cores-on-the-raspberry-pi-pico-2-board-and-rp2350-mcu-from-blinking-an-led-to-building-linux/
 #
 # Note: gcc-riscv64-unknown-elf does NOT work - RP2350 uses 32-bit RISC-V (Hazard3)
 option(RISCV "Build for RISC-V architecture" OFF)

@@ -82,31 +82,31 @@ make -j$(nproc)
 
 ### RISC-V Toolchain Installation
 
-RP2350's RISC-V cores are 32-bit Hazard3 (RV32IMAC). The Pico SDK looks for `riscv32-unknown-elf-gcc`.
+RP2350's RISC-V cores are 32-bit Hazard3 (RV32IMAC). The Pico SDK looks for `riscv32-corev-elf-gcc` or `riscv32-unknown-elf-gcc`.
 
-**Option 1: xPack GNU RISC-V Embedded GCC (recommended)**
+**Recommended: CORE-V Toolchain (no symlinks needed!)**
 
-Download from: https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases
+The CORE-V toolchain from Embecosm is recommended as it provides `riscv32-corev-elf-gcc` which Pico SDK recognizes directly.
 
-After extracting, create symlinks in the bin directory:
+1. Download from: https://buildbot.embecosm.com/job/corev-gcc-ubuntu2204/
+   - Choose the latest successful build
+   - Download `corev-openhw-gcc-ubuntu2204-YYYYMMDD.tar.gz`
+
+2. Extract and set environment:
 ```bash
-cd /path/to/xpack-riscv-none-elf-gcc/bin
-ln -s riscv-none-elf-gcc riscv32-unknown-elf-gcc
-ln -s riscv-none-elf-g++ riscv32-unknown-elf-g++
-ln -s riscv-none-elf-objcopy riscv32-unknown-elf-objcopy
-ln -s riscv-none-elf-objdump riscv32-unknown-elf-objdump
+# Extract
+tar xvf corev-openhw-gcc-ubuntu2204-YYYYMMDD.tar.gz
+
+# Set environment variable
+export PICO_TOOLCHAIN_PATH=/path/to/corev-openhw-gcc-ubuntu2204-YYYYMMDD
 ```
 
-Then add to PATH or set `PICO_TOOLCHAIN_PATH`:
+3. Add to your `.bashrc` for persistence:
 ```bash
-export PATH=/path/to/xpack-riscv-none-elf-gcc/bin:$PATH
-# Or:
-export PICO_TOOLCHAIN_PATH=/path/to/xpack-riscv-none-elf-gcc/bin
+echo 'export PICO_TOOLCHAIN_PATH=/path/to/corev-openhw-gcc-ubuntu2204-YYYYMMDD' >> ~/.bashrc
 ```
 
-**Option 2: Raspberry Pi's prebuilt toolchain**
-
-Download from: https://github.com/raspberrypi/pico-sdk-tools/releases
+Reference: [CNX Software - Using RISC-V cores on the Raspberry Pi Pico 2](https://www.cnx-software.com/2024/08/31/using-risc-v-cores-on-the-raspberry-pi-pico-2-board-and-rp2350-mcu-from-blinking-an-led-to-building-linux/)
 
 > **Note**: `gcc-riscv64-unknown-elf` (64-bit) does NOT work. RP2350 requires a 32-bit RISC-V toolchain.
 
