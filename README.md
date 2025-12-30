@@ -319,12 +319,14 @@ thumbycolor/
 ├── thumbycolor_hw.h      # HAL header
 ├── CMakeLists.txt        # Build configuration (ARM/RISC-V)
 ├── build.sh              # Build script
-├── hyperspace_game.h     # Shared game logic (all ports)
-├── hyperspace_data.h     # Shared sprite/mesh data
-├── libfixmath/           # Fixed-point math library
 ├── README.md             # This file
 └── build/                # Build output directory
     └── hyperspace_thumbycolor.uf2
+
+../
+├── hyperspace_game.h     # Shared game logic (all ports)
+├── hyperspace_data.h     # Shared sprite/mesh data
+└── libfixmath/           # Fixed-point math library
 ```
 
 ## Code Architecture
@@ -339,9 +341,15 @@ This allows the same game logic to run on PicoSystem, Thumby Color, GBA, and SDL
 
 ## Related Projects
 
-- [Hyperspace for PicoSystem](../) - Port for Pimoroni PicoSystem
-- [Hyperspace for GBA](../gba/) - Port for Game Boy Advance
-- [Hyperspace SDL2](../hyperspace_sdl2.c) - SDL2 port for desktop platforms
+- [Hyperspace for PicoSystem](https://github.com/itsmeterada/picosystem_hyperspace) - Port for Pimoroni PicoSystem
+- [Hyperspace for GBA](https://github.com/itsmeterada/hyperspace_gba) - Port for Game Boy Advance
+- [Hyperspace SDL2](https://github.com/itsmeterada/hyperspace) - SDL2 port for desktop platforms
+
+## Technical Information
+
+- [thumby color](https://tinycircuits.com/products/thumby-color) - Thumby Color Specs
+- [thumby color documents](https://color.thumby.us/pages/documentation-and-examples/documentation-and-examples/) - Thumby Color Documents and Examples
+- [GC9107 spec sheet](https://cdn.hackaday.io/files/1881838051221472/GC9107%20DataSheet%20V1.2.pdf) - LCD controller
 
 ## Credits
 
